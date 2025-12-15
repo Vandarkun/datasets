@@ -1,0 +1,32 @@
+# --- Python 基础忽略 ---
+__pycache__/
+*.py[cod]
+*.so
+
+# --- 虚拟环境 (如果不小心把环境建在项目里了) ---
+venv/
+env/
+.venv/
+wdk/
+
+# --- IDE 配置 ---
+.vscode/
+.idea/
+
+# --- 大文件 / 数据集 (根据您的实际情况修改) ---
+datasets/
+data/
+model/
+output/
+
+# --- 模型权重文件 ---
+*.pth
+*.pt
+*.bin
+*.h5
+*.ckpt
+faiss_index/
+
+# --- 敏感信息 ---
+.env
+api_keys.txt
