@@ -6,6 +6,6 @@ echo [2/3] Committing...
 git commit -m "%*"
 
 echo [3/3] Pushing...
-git push
+git push -u github main
 
 echo Done!

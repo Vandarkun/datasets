@@ -1,130 +1,74 @@
-from config import BaseAgent
-import json
-from typing import List, Dict
+import autogen
+from modules.tools import MovieRetriever
 import config
 
-from langchain_core.prompts import ChatPromptTemplate, MessagesPlaceholder
-from langchain_core.tools import StructuredTool
-from langchain.agents import create_tool_calling_agent, AgentExecutor
-from langchain_core.messages import BaseMessage
-from langchain_community.vectorstores import FAISS
-from langchain_community.embeddings import HuggingFaceEmbeddings
-
-class SystemAgent(BaseAgent):
+class SystemAgent:
     def __init__(self):
-        super().__init__(temperature=0.4)
-
-        self.vector_db = self._load_local_vector_db() 
-        self.tools = [self._create_db_tool()]
-        self.agent_executor = self._build_agent()
-
-    def _load_local_vector_db(self):
-        """加载本地 Embedding 模型和 FAISS 索引"""
-        try:
-            print(f"1. Loading Local Embedding Model from: {config.HF_MODEL_LOCAL_PATH} ...")
+        self.retriever = MovieRetriever()
+        
+        # 思考者 Agent
+        self.assistant = autogen.AssistantAgent(
+            name="System_Assistant",
+            system_message="""
+            You are a Movie Recommendation Assistant.
             
-            embeddings = HuggingFaceEmbeddings(
-                model_name=config.HF_MODEL_LOCAL_PATH, 
-                model_kwargs={'device': config.EMBEDDING_DEVICE}, 
-                encode_kwargs={'normalize_embeddings': True} 
-            )
+            **Strategy:**
+            1. **Analyze:** Identify what the user wants AND what they have already mentioned.
+            2. **Search:** Use `search_movie_database` tool.
+               - `keywords`: Describe the ideal movie.
+               - `exclude_titles`: **CRITICAL**. You MUST list all movie titles the user has mentioned or you have already recommended.
+            3. **Recommend:** The tool will return the SINGLE BEST match. Use the details (Director, Plot) to sell it to the user.
             
-            print(f"Loading FAISS Index from: {config.FAISS_INDEX_PATH} ...")
-            
-            vector_db = FAISS.load_local(
-                folder_path=config.FAISS_INDEX_PATH, 
-                embeddings=embeddings,
-                allow_dangerous_deserialization=True,
-                index_name="movies"  # 不加后缀
-            )
-            print("FAISS Database loaded successfully.")
-            return vector_db
-            
-        except Exception as e:
-            print(f"Error loading FAISS DB: {e}")
-            raise RuntimeError("Failed to load local vector database. Check paths in config.py")
-
-    def _create_db_tool(self):
-        def search_movie_database(keywords: str, exclude_titles: str = "") -> str:
-            """
-            Search the movie library.
-            Args:
-                keywords: Descriptive search query.
-                exclude_titles: Comma-separated list of movie titles to ignore (e.g. movies user already saw or rejected).
-            """
-            try:
-                docs = self.vector_db.similarity_search(keywords, k=10)
-                
-                if not docs:
-                    return "No matching movies found in database."
-                
-                excludes = [t.strip().lower() for t in exclude_titles.split(",") if t.strip()]
-                
-                selected_movie = None
-                
-                for doc in docs:
-                    title = doc.metadata.get("title", "Unknown").strip()
-                    
-                    if title.lower() in excludes:
-                        continue
-                    
-                    selected_movie = doc
-                    break 
-                
-                if not selected_movie:
-                    return "Found matches but all were in your exclude list. Try broader keywords."
-
-                meta = selected_movie.metadata
-                title = meta.get("title", "Unknown")
-                genres = ", ".join(meta.get("genres", []))
-                director = ", ".join(meta.get("director", []))
-                cast_list = meta.get("cast", [])
-                cast = ", ".join(cast_list[:5]) if cast_list else "Unknown"
-                overview = meta.get("overview", "No overview.")
-                
-                return (
-                    f"Best Match Found:\n"
-                    f"Title: {title}\n"
-                    f"Genres: {genres}\n"
-                    f"Director: {director}\n"
-                    f"Cast: {cast}\n"
-                    f"Overview: {overview}\n"
-                )
-                
-            except Exception as e:
-                return f"Search Error: {e}"
-
-        return StructuredTool.from_function(
-            func=search_movie_database,
-            name="search_movie_database",
-            description="Semantic search. You MUST provide 'keywords' AND 'exclude_titles' (movies user mentioned/watched) to avoid duplicates."
+            Reply TERMINATE when the task is done or you have made a recommendation.
+            """,
+            llm_config=config.LLM_CONFIG,
         )
 
-    def _build_agent(self):
-        system_prompt = """
-        You are a Movie Recommendation Assistant.
-        
-        **Strategy:**
-        1. **Analyze:** Identify what the user wants AND what they have already mentioned.
-        2. **Search:** Use `search_movie_database`.
-           - `keywords`: Describe the ideal movie.
-           - `exclude_titles`: **CRITICAL**. You MUST list all movie titles the user has mentioned or you have already recommended in this conversation.
-        3. **Recommend:** The tool will return the SINGLE BEST match. Use the details (Director, Plot) to sell it to the user.
+        # 执行者 Agent (Tool Executor)
+        self.executor = autogen.UserProxyAgent(
+            name="System_Executor",
+            human_input_mode="NEVER",
+            code_execution_config=False,  
+            is_termination_msg=lambda x: "TERMINATE" in x.get("content", ""),
+            default_auto_reply="",
+        )
+
+        def search_wrapper(keywords: str, exclude_titles: str = "") -> str:
+            return self.retriever.search(keywords, exclude_titles)
+
+        autogen.register_function(
+            search_wrapper,
+            caller=self.assistant,
+            executor=self.executor,
+            name="search_movie_database",
+            description="Search the movie library. Returns the best matching movie details."
+        )
+
+    def reply(self, last_user_input: str, chat_history: list = None) -> str:
         """
+        发起一次内部对话，获取 System 的回复。
+        """
+        # AutoGen 的 chat history 是自动管理的，但在这种轮次控制的场景下，
+        # 我们通常需要把上下文注入进去。为了简单起见，我们将上一轮输入作为 prompt。
+        # 如果需要保留完整历史，可以将 chat_history 转换为 AutoGen 的 messages 格式并注入。
         
-        prompt = ChatPromptTemplate.from_messages([
-            ("system", system_prompt),
-            MessagesPlaceholder(variable_name="chat_history"),
-            ("human", "{input}"),
-            MessagesPlaceholder(variable_name="agent_scratchpad"),
-        ])
-
-        agent = create_tool_calling_agent(self.llm, self.tools, prompt)
-        return AgentExecutor(agent=agent, tools=self.tools, verbose=False)
-
-    def reply(self, message: str, chat_history: List[BaseMessage]) -> str:
-        return self.agent_executor.invoke({"input": message, "chat_history": chat_history})["output"]
-
-
-if __name__ == "__main__":
-    pass
+        # 为了防止 Agent 无限循环，我们限制 max_turns
+        # 流程通常是: Assistant(Call Tool) -> Executor(Run Tool) -> Assistant(Final Answer)
+        
+        # 我们清空 executor 的历史，重新开始一次“思考-行动-回复”的循环
+        self.executor.clear_history() 
+        self.assistant.clear_history()
+        
+        # 如果有历史记录，可以通过 prepend 方式加入（这里简化处理，只传当前输入）
+        # 实际生产中建议把 chat_history 拼接到 message 中作为 Context
+        
+        context_prompt = f"User said: '{last_user_input}'. \nRespond to the user."
+        
+        self.executor.initiate_chat(
+            self.assistant,
+            message=context_prompt,
+            max_turns=6
+        )
+        
+        last_msg = self.executor.last_message(self.assistant)["content"]
+        return last_msg.replace("TERMINATE", "").strip()
