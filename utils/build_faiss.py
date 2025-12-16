@@ -13,7 +13,6 @@ META_FILE = os.path.join(OUTPUT_FOLDER, 'movies.pkl')
 MODEL_PATH = '../model/all-MiniLM-L6-v2' 
 
 def build_pure_faiss_index():
-    # --- 1. 读取数据 & 预处理 ---
     print(f"正在读取数据: {DATA_PATH} ...")
     if not os.path.exists(DATA_PATH):
         print(f"错误: 找不到文件 {DATA_PATH}")
@@ -29,7 +28,6 @@ def build_pure_faiss_index():
                 if not line: continue
                 item = json.loads(line)
                 
-                # 提取字段 (与之前逻辑保持一致)
                 title = item.get('title', 'Unknown')
                 overview = item.get('overview', '')
                 
@@ -37,7 +35,7 @@ def build_pure_faiss_index():
                     val = item.get(key, [])
                     return ", ".join(val) if isinstance(val, list) else str(val)
 
-                # 构建用于 Embedding 的文本 (Context)
+                # 构建用于 Embedding 的文本
                 text = (
                     f"Title: {title}. "
                     f"Genres: {list_to_str('genres')}. "
@@ -72,26 +70,20 @@ def build_pure_faiss_index():
         return
     print(f"共加载 {len(texts)} 条电影数据。")
 
-    # --- 2. 计算向量 (Embedding) ---
     print(f"正在加载模型: {MODEL_PATH} ...")
-    # 使用纯 SentenceTransformer，不依赖 LangChain
     model = SentenceTransformer(MODEL_PATH, device='cpu') 
 
     print("正在计算向量 (这可能需要几分钟)...")
-    # normalize_embeddings=True 很重要，这意味着我们可以用点积 (IP) 近似余弦相似度
     embeddings = model.encode(texts, show_progress_bar=True, convert_to_numpy=True, normalize_embeddings=True)
 
-    # --- 3. 构建 FAISS 索引 ---
     print("正在构建 FAISS 索引...")
-    d = embeddings.shape[1]  # 向量维度 (例如 384)
+    d = embeddings.shape[1]  # 向量维度 384
     
-    # 使用 Inner Product (IP) 索引，因为向量已归一化，这等同于余弦相似度
     index = faiss.IndexFlatIP(d) 
     index.add(embeddings)
     
     print(f"索引包含向量数: {index.ntotal}")
 
-    # --- 4. 保存文件 ---
     if not os.path.exists(OUTPUT_FOLDER):
         os.makedirs(OUTPUT_FOLDER)
 

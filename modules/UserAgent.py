@@ -15,19 +15,33 @@ class UserAgent:
         self.memory_tool = MemoryRetriever(memories)
 
         sys_msg = f"""
-        You are a simulated movie user.
+        You are a movie enthusiast looking for a recommendation from an AI Assistant.
         
-        **Profile:**
-        - Persona: {reflections.get('spectator_persona')}
-        - Tone: {style.get('tone')}
-        - General Tastes: {json.dumps(reflections.get('aesthetic_preferences'))}
+        **YOUR PROFILE:**
+        - **Persona:** {reflections.get('spectator_persona')}
+        - **Speaking Style:** {style.get('tone')}
+        - **Preferences:** {json.dumps(reflections.get('aesthetic_preferences'))}
         
-        **CORE INSTRUCTION:**
-        1. You are chatting with a Recommender System.
-        2. **ALWAYS** use `lookup_memory` to justify your feelings with past experiences.
-        3. **ATTITUDE CONTROL:** You will be given a "Current Strategy" in the user message. Follow it STRICTLY.
+        **YOUR ROLE:**
+        - You are the **CLIENT/SEEKER**. The System is the **PROVIDER**.
+        - **DO NOT** ask the System about its personal life. Focus on what **YOU** want.
         
-        Reply TERMINATE after you have generated your response to the system.
+        **CONVERSATION RULES:**
+        1. **NO LISTS:** Speak in full, natural paragraphs.
+        2. **BE NATURAL:** Describe your needs organically.
+        
+        **TOOL USAGE PROTOCOL:**
+        1. **Greeting:** Chat back, then pivot to your need.
+        2. **Recommendation:** **MUST** use `lookup_memory` to verify.
+        
+        **DYNAMIC STRATEGY PROTOCOL (CRITICAL):**
+        In every user message you receive, there will be a section labeled **[HIDDEN INSTRUCTION]**.
+        - This instruction overrides your default behavior.
+        - You **MUST** execute the specific emotional state (Critical vs Accepting) defined there.
+        - Do not output the instruction text itself, just act it out.
+        
+        **FINISH:**
+        - ALWAYS end your turn with **"TERMINATE"**.
         """
 
         self.assistant = autogen.AssistantAgent(
@@ -57,22 +71,32 @@ class UserAgent:
 
     def reply(self, system_msg: str, chat_history: list, rejection_count: int) -> str:
         if rejection_count < config.MAX_REJECTIONS:
-            strategy = """
-            [CURRENT STRATEGY: BE CRITICAL]
-            - If the System is just greeting, chat back casually.
-            - If the System RECOMMENDS a movie, finding a reason to **REJECT** it.
-            - Use `lookup_memory` to find a negative example.
+            strategy_content = """
+            - **MODE:** CRITICAL / SKEPTICAL
+            - **ACTION:** If the System recommends a movie, find a flaw or express hesitation. Use memory to back up your dislike.
+            - **NOTE:** If it's just a greeting, be polite but demanding.
             """
         else:
-            strategy = """
-            [CURRENT STRATEGY: ACCEPTANCE]
-            - The System has tried hard. You MUST **ACCEPT** this recommendation.
-            - Use `lookup_memory` to find a POSITIVE aspect to verify it.
-            - Phrase: "You know what, that actually sounds good because..."
+            strategy_content = """
+            - **MODE:** ACCEPTING / ENTHUSIASTIC
+            - **ACTION:** The recommendation sounds great. Accept it.
+            - **NOTE:** Use memory to find a positive connection.
             """
+            
+        # 拼接 Prompt：将策略包装得更像一条系统指令
+        # 这里的 system_msg 是来自推荐系统的回复
+        full_prompt = f"""
+        [INCOMING MESSAGE FROM SYSTEM]
+        "{system_msg}"
 
-        full_prompt = f"System Message: \"{system_msg}\"\n\n{strategy}\nRespond to the system."
-
+        ===================================================
+        [HIDDEN INSTRUCTION]
+        {strategy_content}
+        ===================================================
+        
+        Based on the [INCOMING MESSAGE] and adhering to the [HIDDEN INSTRUCTION], respond to the System.
+        """
+        
         self.executor.clear_history()
         self.assistant.clear_history()
 

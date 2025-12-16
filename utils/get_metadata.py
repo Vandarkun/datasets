@@ -9,16 +9,13 @@ from requests.adapters import HTTPAdapter
 from urllib3.util.retry import Retry
 from tqdm import tqdm
 
-# ================= 配置区 =================
 API_KEY = "0502195f6ecb8fa1d60ac1fe46b4f2e0"
 
 # 文件路径
 INPUT_CSV = 'D:\\Desktop\\My\\code\\datasets\\data\\title_list.csv'
 OUTPUT_FILE = 'D:\\Desktop\\My\\code\\datasets\\data\\tmdb_movie_metadata.jsonl'
 
-# 并发线程数
 MAX_WORKERS = 5
-# ==========================================
 
 write_lock = threading.Lock()
 
@@ -82,8 +79,7 @@ def process_single_row(row):
         genres = [g['name'] for g in details.get('genres', [])]
         overview = details.get('overview', "") # 这里的 "" 保证了 overview 即使是 None 也会变成空字符串
 
-        # ================= 修改后的筛选逻辑 =================
-        # 逻辑：只有当所有关键信息全是空的，才认为是废数据
+        # 只有当所有关键信息全是空的，才认为是废数据
         # 只要有其中任意一个有值，就保留
         
         is_empty_overview = (not overview)
@@ -93,10 +89,8 @@ def process_single_row(row):
 
         # 如果全部都为空，则返回 None (丢弃)
         if is_empty_overview and is_empty_genres and is_empty_cast and is_empty_keywords:
-            # 可以在这里打印一下，看看哪些被丢了
             # print(f"丢弃全空数据: {clean_title}") 
             return None
-        # ===================================================
 
         meta_data = {
             "asin": asin,
@@ -123,7 +117,7 @@ def main():
                     data = json.loads(line)
                     processed_asins.add(data['asin'])
                 except: pass
-    print(f"🔄 跳过 {len(processed_asins)} 条已有数据")
+    print(f" 跳过 {len(processed_asins)} 条已有数据")
 
     if not os.path.exists(INPUT_CSV):
         print(f"❌ 找不到输入文件: {INPUT_CSV}")
@@ -136,8 +130,7 @@ def main():
             if row['asin'] not in processed_asins:
                 tasks.append(row)
 
-    print(f"🚀 开始多线程处理 {len(tasks)} 条数据 (线程数: {MAX_WORKERS})")
-    print("⚡ 按 Ctrl+C 可随时安全停止")
+    print(f" 开始多线程处理 {len(tasks)} 条数据 (线程数: {MAX_WORKERS})")
 
     executor = ThreadPoolExecutor(max_workers=MAX_WORKERS)
     future_to_row = {}
@@ -156,15 +149,15 @@ def main():
                     f_out.flush()
 
     except KeyboardInterrupt:
-        print("\n🛑 正在停止... 取消剩余任务中...")
+        print("\n 正在停止... 取消剩余任务中...")
         executor.shutdown(wait=False)
-        print("✅ 已安全退出。数据已保存。")
+        print(" 已安全退出。数据已保存。")
     
     finally:
         f_out.close()
 
 if __name__ == "__main__":
     if "YOUR_NEW" in API_KEY:
-        print("❌ 请先修改代码填入新的 API Key！")
+        print(" 请先修改代码填入新的 API Key！")
     else:
         main()

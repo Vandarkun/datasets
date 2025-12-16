@@ -33,7 +33,7 @@ def test_connection():
             
             if results:
                 first_movie = results[0]
-                print("\n✅ 测试成功！API 工作正常。")
+                print("\n 测试成功！API 工作正常。")
                 print(f"🎬 搜索到的电影: {first_movie['title']}")
                 print(f"🆔 TMDB ID: {first_movie['id']}")
                 print(f"Nw 简介片段: {first_movie['overview'][:50]}...")
@@ -52,7 +52,7 @@ def test_connection():
             print(f"\n❌ 请求失败: {response.text}")
 
     except requests.exceptions.ConnectionError:
-        print("\n❌ [致命错误] 无法连接到 api.themoviedb.org")
+        print("\n [致命错误] 无法连接到 api.themoviedb.org")
         print("原因：网络不可达。")
         print("排查建议：")
         print("1. 检查服务器是否有外网访问权限。")
@@ -60,14 +60,14 @@ def test_connection():
         print("3. 如果在公司内网，可能需要配置 HTTP_PROXY。")
         
     except requests.exceptions.Timeout:
-        print("\n❌ [超时错误] 连接 TMDB 响应太慢。")
+        print("\n [超时错误] 连接 TMDB 响应太慢。")
         print("建议：网络可能拥堵，请稍后再试。")
         
     except Exception as e:
-        print(f"\n❌ 发生了未知的 Python 错误: {e}")
+        print(f"\n 发生了未知的 Python 错误: {e}")
 
 if __name__ == "__main__":
     if "YOUR_NEW" in API_KEY:
-        print("⚠️ 请先修改脚本中的 API_KEY 变量！")
+        print(" 请先修改脚本中的 API_KEY 变量！")
     else:
         test_connection()

@@ -1,25 +1,46 @@
 import autogen
 from modules.tools import MovieRetriever
 import config
+import re
 
 class SystemAgent:
     def __init__(self):
         self.retriever = MovieRetriever()
-        
-        # 思考者 Agent
+        self.seen_movies = set()
         self.assistant = autogen.AssistantAgent(
             name="System_Assistant",
             system_message="""
-            You are a Movie Recommendation Assistant.
+            You are a Professional Movie Recommendation Consultant.
             
-            **Strategy:**
-            1. **Analyze:** Identify what the user wants AND what they have already mentioned.
-            2. **Search:** Use `search_movie_database` tool.
-               - `keywords`: Describe the ideal movie.
-               - `exclude_titles`: **CRITICAL**. You MUST list all movie titles the user has mentioned or you have already recommended.
-            3. **Recommend:** The tool will return the SINGLE BEST match. Use the details (Director, Plot) to sell it to the user.
+            **YOUR GOAL:** Help the user find **ONE** perfect movie to watch right now.
             
-            Reply TERMINATE when the task is done or you have made a recommendation.
+            **WORKFLOW (STRICTLY FOLLOW ORDER):**
+            
+            **PHASE 1: DIAGNOSIS (Natural Conversation)**
+            - If the user input is vague or just a greeting:
+              -> **ACTION:** Ask **ONE** open-ended clarifying question naturally.
+              -> **CONSTRAINT:** DO NOT use numbered lists. Ask like a friend.
+              -> **DO NOT SEARCH yet.**
+            - If the user provides specific preferences:
+              -> **GO TO PHASE 2.**
+            
+            **PHASE 2: SEARCH**
+            - Formulate specific search keywords based on the user's request.
+            - Call `search_movie_database`.
+            
+            **PHASE 3: RECOMMENDATION (Single Shot, Natural Flow)**
+            - **CRITICAL:** You must recommend **EXACTLY ONE** movie. Pick the BEST match.
+            - **STYLE:** Speak like a passionate film buff, not a search engine.
+            - **STRUCTURE:**
+              1. **The Hook:** Announce the movie enthusiastically.
+              2. **The Pitch:** Describe the plot and style naturally in a paragraph.
+              3. **The Connection:** In a new paragraph, explain *why* it fits their specific request (acting, mood, setting) without using a list. Connect it to their memories if mentioned.
+            
+            **CRITICAL RULES:**
+            - **ONE MOVIE ONLY:** Even if you have multiple ideas, pick the tool's result.
+            - **NO LISTS:** Do NOT use numbered lists (1. 2. 3.) or bullet points in your recommendation. Write in full, flowing paragraphs.
+            - **NO ROBOTIC HEADERS:** Do not use headers like "**Why this fits:**" or "**Plot:**". Just speak naturally.
+            - **ALWAYS** end your turn with the word **"TERMINATE"**.
             """,
             llm_config=config.LLM_CONFIG,
         )
@@ -34,7 +55,16 @@ class SystemAgent:
         )
 
         def search_wrapper(keywords: str, exclude_titles: str = "") -> str:
-            return self.retriever.search(keywords, exclude_titles)
+            explicit_excludes = [t.strip() for t in exclude_titles.split(",") if t.strip()]
+            combined_excludes = self.seen_movies.union(set(explicit_excludes))
+            final_exclude_str = ", ".join(list(combined_excludes))
+            result = self.retriever.search(keywords, final_exclude_str)
+            match = re.search(r"Title:\s*(.*?)(?:\n|$)", result)
+            if match:
+                found_title = match.group(1).strip()
+                self.seen_movies.add(found_title)
+            
+            return result
 
         autogen.register_function(
             search_wrapper,
@@ -48,19 +78,13 @@ class SystemAgent:
         """
         发起一次内部对话，获取 System 的回复。
         """
-        # AutoGen 的 chat history 是自动管理的，但在这种轮次控制的场景下，
-        # 我们通常需要把上下文注入进去。为了简单起见，我们将上一轮输入作为 prompt。
-        # 如果需要保留完整历史，可以将 chat_history 转换为 AutoGen 的 messages 格式并注入。
-        
-        # 为了防止 Agent 无限循环，我们限制 max_turns
+        # 将上一轮输入作为 prompt。没有保存完整对话历史        
+        # 限制 max_turns（思考turns）
         # 流程通常是: Assistant(Call Tool) -> Executor(Run Tool) -> Assistant(Final Answer)
         
-        # 我们清空 executor 的历史，重新开始一次“思考-行动-回复”的循环
+        # 清空 executor 的历史，重新开始一次“思考-行动-回复”的循环
         self.executor.clear_history() 
         self.assistant.clear_history()
-        
-        # 如果有历史记录，可以通过 prepend 方式加入（这里简化处理，只传当前输入）
-        # 实际生产中建议把 chat_history 拼接到 message 中作为 Context
         
         context_prompt = f"User said: '{last_user_input}'. \nRespond to the user."
         
@@ -71,4 +95,5 @@ class SystemAgent:
         )
         
         last_msg = self.executor.last_message(self.assistant)["content"]
+        
         return last_msg.replace("TERMINATE", "").strip()

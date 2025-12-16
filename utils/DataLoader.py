@@ -101,7 +101,6 @@ class UserHistoryLoader:
                     asin = r['asin']
                     meta = self.meta_map[asin] 
                     
-                    # 处理 Vote 字段 (有时是字符串 "1,234")
                     votes = r['vote']
                     if isinstance(votes, str):
                         votes = int(votes.replace(',', '')) if votes.replace(',', '').isdigit() else 0

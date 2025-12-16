@@ -1,14 +1,23 @@
 import faiss
 import pickle
 import os
-from sentence_transformers import SentenceTransformer
+from sentence_transformers import SentenceTransformer, util
 import config
+
+_SHARED_MODEL = None
+
+def get_shared_model():
+    global _SHARED_MODEL
+    if _SHARED_MODEL is None:
+        print(f"[Init] Loading Shared Embedding Model: {config.HF_MODEL_LOCAL_PATH}...")
+        _SHARED_MODEL = SentenceTransformer(config.HF_MODEL_LOCAL_PATH, device=config.EMBEDDING_DEVICE)
+    return _SHARED_MODEL
 
 # --- System 端工具: 电影检索 ---
 class MovieRetriever:
     def __init__(self):
         print(f"Loading Embedding Model: {config.HF_MODEL_LOCAL_PATH}...")
-        self.model = SentenceTransformer(config.HF_MODEL_LOCAL_PATH, device=config.EMBEDDING_DEVICE)
+        self.model = get_shared_model()
         
         print(f"Loading FAISS Index: {config.FAISS_INDEX_PATH}...")
         self.index = faiss.read_index(config.FAISS_INDEX_PATH)
@@ -25,8 +34,11 @@ class MovieRetriever:
         """
         try:
             
-            query_vector = self.model.encode([keywords])
+            query_vector = self.model.encode([keywords], normalize_embeddings=True)
             
+            if query_vector.dtype != 'float32':
+                query_vector = query_vector.astype('float32')
+
             D, I = self.index.search(query_vector, 10)
             
             excludes = [t.strip().lower() for t in exclude_titles.split(",") if t.strip()]
@@ -61,31 +73,55 @@ class MovieRetriever:
 class MemoryRetriever:
     def __init__(self, memories: list):
         """
-        初始化时传入用户的记忆列表。
-        :param memories: List of dicts, e.g. [{'movie_title': '...', 'memory_text': '...'}]
+        初始化时直接将所有记忆向量化并缓存。
         """
+        self.model = get_shared_model()
         self.memories = memories
+        self.memory_embeddings = None
+        
+        if self.memories:
+            self.corpus = [
+                f"{m.get('movie_title', '')}: {m.get('memory_text', '')}" 
+                for m in memories
+            ]
+            print(f"[Init] Encoding {len(self.memories)} User Memories...")
+            self.memory_embeddings = self.model.encode(self.corpus, convert_to_tensor=True, normalize_embeddings=True)
 
     def lookup(self, query: str) -> str:
         """
-        Search past movie memories to justify preferences.
-        :param query: The movie topic or feeling to look for in memory.
+        Semantic search in user memories.
         """
-        hits = []
-        query_lower = query.lower()
-        
-        # 简单的文本匹配逻辑
-        for mem in self.memories:
-            content = f"{mem.get('movie_title', '')} {mem.get('memory_text', '')}".lower()
+        if not self.memories or self.memory_embeddings is None:
+            return "My memory is blank (no history data)."
+
+        try:
+            # 向量化查询
+            query_embedding = self.model.encode(query, convert_to_tensor=True, normalize_embeddings=True)
             
-            if query_lower in content:
+            # 计算相似度
+            cos_scores = util.cos_sim(query_embedding, self.memory_embeddings)[0]
+            
+            # 获取 Top 3
+            top_results = list(zip(cos_scores, self.memories))
+            top_results.sort(key=lambda x: x[0], reverse=True)
+            
+            hits = []
+            # 阈值过滤
+            threshold = 0.25
+            
+            for score, mem in top_results[:3]:
+                if score < threshold:
+                    continue
                 hits.append(
-                    f"Film: {mem.get('movie_title')} | "
+                    f"[Similarity: {score:.2f}] Film: {mem.get('movie_title')} | "
                     f"Rating: {mem.get('rating')} | "
                     f"Review: {mem.get('memory_text')}"
                 )
-        
-        if not hits:
-            return "No exact match in memory. I will rely on my general aesthetic preferences."
-        
-        return "\n".join(hits[:3])
+            
+            if not hits:
+                return "I racked my brain, but I can't recall any specific movie related to that topic."
+            
+            return "\n".join(hits)
+
+        except Exception as e:
+            return f"Memory Lookup Error: {e}"

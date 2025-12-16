@@ -4,7 +4,6 @@ from typing import List, Optional
 from pydantic import BaseModel, Field
 from openai import OpenAI
 
-# ================= 1. 数据结构定义 (Updated Schemas) =================
 
 class KeyMemoryItem(BaseModel):
     movie_title: str
@@ -18,7 +17,6 @@ class ReflectionProfile(BaseModel):
     aesthetic_preferences: List[str] = Field(..., description="What elements do they love/hate?")
     spectator_persona: str = Field(..., description="Label like 'Critical Historian' or 'Popcorn Fan'")
     decision_logic: str = Field(..., description="Why they choose movies?")
-    # [NEW] 新增字段：审美演变
     taste_evolution: str = Field(..., description="How their taste changed over time. e.g. 'Started loving Horror but shifted to Family films in 2014'.")
     contradictions: Optional[str] = Field(None, description="Any conflicting tastes?")
 
@@ -35,7 +33,6 @@ class FullUserProfile(BaseModel):
     reflections: ReflectionProfile
     dialogue_style: StyleProfile
 
-# ================= 2. 核心处理类 (Time-Aware Version) =================
 
 class MemoryProfileChain:
     def __init__(self, api_key, base_url, model_name="deepseek-chat"):
@@ -49,18 +46,15 @@ class MemoryProfileChain:
         """
         if not interaction_history: return []
         
-        # 1. 预处理
         valid_reviews = [r for r in interaction_history if len(r.get('review_text', '')) > 30]
         if not valid_reviews: return []
         
-        # 2. 严格按时间正序排列 (Oldest -> Newest)
         sorted_history = sorted(valid_reviews, key=lambda x: x['timestamp'])
         total = len(sorted_history)
         
         if total < 5:
             return sorted_history 
 
-        # 3. 分段索引计算
         early_end = max(1, int(total * 0.2))          # 前 20%
         recent_start = min(total - 1, int(total * 0.8)) # 后 20%
 
@@ -100,7 +94,6 @@ class MemoryProfileChain:
                 unique_samples.append(item)
                 seen_asins.add(item['asin'])
         
-        # 5. 最后按时间正序输出，方便 LLM 理解演变
         unique_samples.sort(key=lambda x: x['timestamp'])
         
         return unique_samples
@@ -109,7 +102,6 @@ class MemoryProfileChain:
         text_block = ""
         for r in sampled_reviews:
             meta = r.get('movie_meta', {})
-            # [Update] 增加日期，辅助分析时间线
             date_str = r.get('date_str', 'Unknown Date')
             
             text_block += f"--- Date: {date_str} ---\n"
@@ -176,7 +168,6 @@ class MemoryProfileChain:
         user_id = user_data['user_id']
         raw_history = user_data.get('interaction_history', [])
         
-        # 1. 时序采样
         sampled = self._time_aware_sample(raw_history)
         if not sampled: 
             print("No valid samples found.")
@@ -189,14 +180,12 @@ class MemoryProfileChain:
         date_range = f"{start_date} to {end_date}"
         
         try:
-            # 2. 链式生成
             memories = self._step_1_memories(context)
             if not memories: return None
             
             reflections = self._step_2_reflections(context, memories, date_range)
             style = self._step_3_style(context)
             
-            # 3. 组装
             return FullUserProfile(
                 user_id=user_id,
                 meta_stats={

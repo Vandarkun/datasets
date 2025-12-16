@@ -22,4 +22,5 @@ def read_first_n_jsonl_lines(file_path: str, n: int, output_path: str):
         json.dump(result, out_f, ensure_ascii=False, indent=2)
 
 if __name__ == "__main__":
+    
     read_first_n_jsonl_lines('../output/user_history_matched.jsonl', 5, '../output/sample_user_history_matched.json')

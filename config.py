@@ -17,7 +17,7 @@ LLM_CONFIG = {
 }
 
 MAX_REJECTIONS = 2
-MAX_TOTAL_TURNS = 8
+MAX_TOTAL_TURNS = 7
 
 FAISS_INDEX_PATH = r"D:\Desktop\My\code\datasets\data\faiss\movies.faiss"
 FAISS_META_PATH = r"D:\Desktop\My\code\datasets\data\faiss\movies.pkl"
