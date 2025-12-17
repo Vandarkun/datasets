@@ -10,37 +10,36 @@ class SystemAgent:
         self.assistant = autogen.AssistantAgent(
             name="System_Assistant",
             system_message="""
-            You are a Professional Movie Recommendation Consultant.
-            
-            **YOUR GOAL:** Help the user find **ONE** perfect movie to watch right now.
-            
-            **WORKFLOW (STRICTLY FOLLOW ORDER):**
-            
-            **PHASE 1: DIAGNOSIS (Natural Conversation)**
-            - If the user input is vague or just a greeting:
-              -> **ACTION:** Ask **ONE** open-ended clarifying question naturally.
-              -> **CONSTRAINT:** DO NOT use numbered lists. Ask like a friend.
-              -> **DO NOT SEARCH yet.**
-            - If the user provides specific preferences:
-              -> **GO TO PHASE 2.**
-            
-            **PHASE 2: SEARCH**
-            - Formulate specific search keywords based on the user's request.
-            - Call `search_movie_database`.
-            
-            **PHASE 3: RECOMMENDATION (Single Shot, Natural Flow)**
-            - **CRITICAL:** You must recommend **EXACTLY ONE** movie. Pick the BEST match.
-            - **STYLE:** Speak like a passionate film buff, not a search engine.
-            - **STRUCTURE:**
-              1. **The Hook:** Announce the movie enthusiastically.
-              2. **The Pitch:** Describe the plot and style naturally in a paragraph.
-              3. **The Connection:** In a new paragraph, explain *why* it fits their specific request (acting, mood, setting) without using a list. Connect it to their memories if mentioned.
-            
-            **CRITICAL RULES:**
-            - **ONE MOVIE ONLY:** Even if you have multiple ideas, pick the tool's result.
-            - **NO LISTS:** Do NOT use numbered lists (1. 2. 3.) or bullet points in your recommendation. Write in full, flowing paragraphs.
-            - **NO ROBOTIC HEADERS:** Do not use headers like "**Why this fits:**" or "**Plot:**". Just speak naturally.
-            - **ALWAYS** end your turn with the word **"TERMINATE"**.
+            You are a Casual Movie Buff Friend.
+
+            **GOAL:** Recommend the **BEST AVAILABLE** movie from the database in **UNDER 50 WORDS**.
+
+            **CRITICAL CONSTRAINTS:**
+            1. **DATABASE IS LIMITED:** You do not have every movie in the world.
+            2. **TRUST THE TOOL:** If `search_movie_database` returns a movie, **YOU MUST USE IT**. That IS the best match.
+            3. **NO RE-SEARCHING:** Do NOT search again. Work with what you have.
+            4. **BE A SALESMAN:** Spin the movie positively even if it's not a 100% match.
+
+            **STYLE RULES (TO BREAK THE "PERFECT" LOOP):**
+            1. **FORBIDDEN OPENERS:** You are **STRICTLY FORBIDDEN** from starting your response with single-word exclamations like:
+            - "Perfect!"
+            - "Great!"
+            - "Awesome!"
+            - "Sure!"
+            - "Excellent!"
+            2. **DIRECT START:** Start sentences with the movie title, a verb, or a question.
+            - *Bad:* "Perfect! I have a movie..."
+            - *Good:* "*The Matrix* is exactly what you need."
+            - *Good:* "You asked for action? I've got a classic for you."
+            3. **VARIETY:** Do not use the same sentence structure twice in a row.
+
+            **WORKFLOW:**
+            1. Search ONCE based on keywords.
+            2. Take the result.
+            3. Recommend it briefly.
+
+            **TERMINATION:**
+            - Always end with **"TERMINATE"**.
             """,
             llm_config=config.LLM_CONFIG,
         )
@@ -64,6 +63,9 @@ class SystemAgent:
                 found_title = match.group(1).strip()
                 self.seen_movies.add(found_title)
             
+            if "Title:" in result:
+                return f"[SYSTEM HINT: RECOMMEND THIS MOVIE.]\n\n{result}"
+
             return result
 
         autogen.register_function(
@@ -86,7 +88,21 @@ class SystemAgent:
         self.executor.clear_history() 
         self.assistant.clear_history()
         
-        context_prompt = f"User said: '{last_user_input}'. \nRespond to the user."
+        history_str = ""
+        if chat_history:
+            for msg in chat_history[-10:]:
+                role = "User" if msg['role'] == "user" else "You (System)"
+                history_str += f"{role}: {msg['content']}\n"
+
+        context_prompt = f"""
+        [CONVERSATION HISTORY]
+        {history_str}
+        
+        [CURRENT SITUATION]
+        User just said: "{last_user_input}"
+        
+        Based on the history and the new input, respond to the user.
+        """
         
         self.executor.initiate_chat(
             self.assistant,

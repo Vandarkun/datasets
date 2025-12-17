@@ -14,39 +14,28 @@ class UserAgent:
         
         self.memory_tool = MemoryRetriever(memories)
 
-        sys_msg = f"""
-        You are a movie enthusiast looking for a recommendation from an AI Assistant.
+        system_message=f"""
+        You are a movie enthusiast chatting with an AI.
         
         **YOUR PROFILE:**
         - **Persona:** {reflections.get('spectator_persona')}
-        - **Speaking Style:** {style.get('tone')}
         - **Preferences:** {json.dumps(reflections.get('aesthetic_preferences'))}
         
-        **YOUR ROLE:**
-        - You are the **CLIENT/SEEKER**. The System is the **PROVIDER**.
-        - **DO NOT** ask the System about its personal life. Focus on what **YOU** want.
+        **SPEAKING STYLE:**
+        - **SHORT & SNAPPY:** Keep messages not too long. Like a chat app.
+        - **DIRECT:** Don't explain your whole life story. Just react to the recommendation.
+        - **FOCUS:** Focus on ONE thing you like or hate at a time.
         
-        **CONVERSATION RULES:**
-        1. **NO LISTS:** Speak in full, natural paragraphs.
-        2. **BE NATURAL:** Describe your needs organically.
-        
-        **TOOL USAGE PROTOCOL:**
-        1. **Greeting:** Chat back, then pivot to your need.
-        2. **Recommendation:** **MUST** use `lookup_memory` to verify.
-        
-        **DYNAMIC STRATEGY PROTOCOL (CRITICAL):**
-        In every user message you receive, there will be a section labeled **[HIDDEN INSTRUCTION]**.
-        - This instruction overrides your default behavior.
-        - You **MUST** execute the specific emotional state (Critical vs Accepting) defined there.
-        - Do not output the instruction text itself, just act it out.
+        **TOOL USAGE:**
+        - You CAN use `lookup_memory` if you really need to recall a specific movie.
         
         **FINISH:**
-        - ALWAYS end your turn with **"TERMINATE"**.
+        - ALWAYS end with **"TERMINATE"**.
         """
 
         self.assistant = autogen.AssistantAgent(
             name="User_Simulator",
-            system_message=sys_msg,
+            system_message=system_message,
             llm_config=config.LLM_CONFIG,
         )
 
@@ -70,6 +59,13 @@ class UserAgent:
         )
 
     def reply(self, system_msg: str, chat_history: list, rejection_count: int) -> str:
+
+        history_str = ""
+        if chat_history:
+            for msg in chat_history[-10:]:
+                role = "System" if msg['role'] == "system" else "You (User)"
+                history_str += f"{role}: {msg['content']}\n"
+
         if rejection_count < config.MAX_REJECTIONS:
             strategy_content = """
             - **MODE:** CRITICAL / SKEPTICAL
@@ -86,6 +82,9 @@ class UserAgent:
         # 拼接 Prompt：将策略包装得更像一条系统指令
         # 这里的 system_msg 是来自推荐系统的回复
         full_prompt = f"""
+        [CONVERSATION HISTORY]
+        {history_str}
+
         [INCOMING MESSAGE FROM SYSTEM]
         "{system_msg}"
 
@@ -94,7 +93,7 @@ class UserAgent:
         {strategy_content}
         ===================================================
         
-        Based on the [INCOMING MESSAGE] and adhering to the [HIDDEN INSTRUCTION], respond to the System.
+        Based on the history (don't repeat yourself) and the new message, respond.
         """
         
         self.executor.clear_history()
