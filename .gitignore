@@ -1,5 +1,7 @@
 __pycache__/
 
+datasets/**/*
+
 data/**/*
 !data/**/.gitkeep
 
@@ -10,3 +12,6 @@ output/**/*
 
 *.pth
 *.faiss
+
+*.json
+*.jsonl
