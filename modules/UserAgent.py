@@ -33,10 +33,13 @@ class UserAgent:
         - ALWAYS end with **"TERMINATE"**.
         """
 
+        self.llm_config = config.LLM_CONFIG
+        self.llm_config["temperature"] = 0.7
+
         self.assistant = autogen.AssistantAgent(
             name="User_Simulator",
             system_message=system_message,
-            llm_config=config.LLM_CONFIG,
+            llm_config=self.llm_config,
         )
 
         self.executor = autogen.UserProxyAgent(

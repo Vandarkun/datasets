@@ -112,7 +112,6 @@ class MemoryProfileChain:
         return text_block
 
     def _call_llm(self, system_prompt, user_content, pydantic_model):
-        """DeepSeek 通用 JSON 调用封装"""
         schema = json.dumps(pydantic_model.model_json_schema(), indent=2)
         full_system_prompt = f"{system_prompt}\n\nIMPORTANT: Output valid JSON only following this schema:\n{schema}"
 
@@ -144,7 +143,7 @@ class MemoryProfileChain:
         print("    > Step 2: Synthesizing Reflections & Evolution...")
         memory_summary = "\n".join([f"- {m.movie_title}: {m.memory_text}" for m in memories])
         
-        # [Update] 专门的 Prompt 引导分析时间演变
+        # Prompt 引导分析时间演变
         prompt = f"""
         You are a psychologist profiling a movie viewer based on their review history ({date_range_str}).
         

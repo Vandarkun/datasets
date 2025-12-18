@@ -7,6 +7,8 @@ class SystemAgent:
     def __init__(self):
         self.retriever = MovieRetriever()
         self.seen_movies = set()
+        self.llm_config = config.LLM_CONFIG
+        self.llm_config["temperature"] = 0.7
         self.assistant = autogen.AssistantAgent(
             name="System_Assistant",
             system_message="""
@@ -20,19 +22,6 @@ class SystemAgent:
             3. **NO RE-SEARCHING:** Do NOT search again. Work with what you have.
             4. **BE A SALESMAN:** Spin the movie positively even if it's not a 100% match.
 
-            **STYLE RULES (TO BREAK THE "PERFECT" LOOP):**
-            1. **FORBIDDEN OPENERS:** You are **STRICTLY FORBIDDEN** from starting your response with single-word exclamations like:
-            - "Perfect!"
-            - "Great!"
-            - "Awesome!"
-            - "Sure!"
-            - "Excellent!"
-            2. **DIRECT START:** Start sentences with the movie title, a verb, or a question.
-            - *Bad:* "Perfect! I have a movie..."
-            - *Good:* "*The Matrix* is exactly what you need."
-            - *Good:* "You asked for action? I've got a classic for you."
-            3. **VARIETY:** Do not use the same sentence structure twice in a row.
-
             **WORKFLOW:**
             1. Search ONCE based on keywords.
             2. Take the result.
@@ -41,7 +30,7 @@ class SystemAgent:
             **TERMINATION:**
             - Always end with **"TERMINATE"**.
             """,
-            llm_config=config.LLM_CONFIG,
+            llm_config=self.llm_config,
         )
 
         # 执行者 Agent (Tool Executor)
