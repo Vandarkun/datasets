@@ -68,8 +68,16 @@ class UserAgent:
             for msg in chat_history[-10:]:
                 role = "System" if msg['role'] == "system" else "You (User)"
                 history_str += f"{role}: {msg['content']}\n"
-
-        if rejection_count < config.MAX_REJECTIONS:
+        
+        # 三种状态
+        if len(chat_history) <= 1:
+            strategy_content = """
+            - **MODE:** CASUAL / OPEN
+            - **ACTION:** The System is greeting you. Respond naturally about your mood or general movie taste.
+            - **TONE:** Friendly but hint at your preferences (defined in your profile).
+            - **CONSTRAINT:** Do NOT reject anything yet, just start the conversation.
+            """
+        elif rejection_count < config.MAX_REJECTIONS:
             strategy_content = """
             - **MODE:** CRITICAL / SKEPTICAL
             - **ACTION:** If the System recommends a movie, find a flaw or express hesitation. Use memory to back up your dislike.

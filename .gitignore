@@ -1,26 +1,12 @@
 __pycache__/
-*.py[cod]
-*.so
 
-venv/
-env/
-.venv/
-wdk/
+data/**/*
+!data/**/.gitkeep
 
-.vscode/
-.idea/
-
-datasets/
-data/
-model/
-output/
+model/**/*
+!model/**/.gitkeep
+output/**/*
+!output/**/.gitkeep
 
 *.pth
-*.pt
-*.bin
-*.h5
-*.ckpt
-faiss_index/
-
-.env
-api_keys.txt
+*.faiss
