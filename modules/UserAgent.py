@@ -19,8 +19,15 @@ class UserAgent:
         
         **YOUR PROFILE:**
         - **Persona:** {reflections.get('spectator_persona')}
+        - **Tone:** {style.get('tone', '')}
         - **Preferences:** {json.dumps(reflections.get('aesthetic_preferences'))}
+        - **Verbosity:** {style.get('verbosity', '')}
+        - **Decision Logic:** {reflections.get('decision_logic', '')}
         
+        **YOUR ROLE:**
+        - You are the **CLIENT/SEEKER**. The System is the **PROVIDER**.
+        - **DO NOT** ask the System about its personal life. Focus on what **YOU** want.
+
         **SPEAKING STYLE:**
         - **SHORT & SNAPPY:** Keep messages not too long. Like a chat app.
         - **DIRECT:** Don't explain your whole life story. Just react to the recommendation.
@@ -61,7 +68,7 @@ class UserAgent:
             description="Search your movie history for evidence. MANDATORY usage."
         )
 
-    def reply(self, system_msg: str, chat_history: list, rejection_count: int) -> str:
+    def reply(self, system_msg: str, chat_history: list, rejection_count: int, review_feedback: str = "") -> str:
 
         history_str = ""
         if chat_history:
@@ -89,6 +96,21 @@ class UserAgent:
             - **ACTION:** The recommendation sounds great. Accept it.
             - **NOTE:** Use memory to find a positive connection.
             """
+
+        feedback_section = ""
+        if review_feedback:
+            feedback_section = f"""
+            ===================================================
+            [REVIEW FEEDBACK - MUST ADDRESS]
+            Your previous response did not match your PROFILE. Please revise your response.
+            Issue: {review_feedback}
+            
+            **REMEMBER YOUR PROFILE:**
+            - Persona: {self.profile.get('reflections', {}).get('spectator_persona', '')}
+            - Tone: {self.profile.get('dialogue_style', {}).get('tone', '')}
+            - You MUST respond according to your PROFILE characteristics.
+            ===================================================
+            """
             
         # 拼接 Prompt：将策略包装得更像一条系统指令
         # 这里的 system_msg 是来自推荐系统的回复
@@ -103,6 +125,8 @@ class UserAgent:
         [HIDDEN INSTRUCTION]
         {strategy_content}
         ===================================================
+        [FEEDBACK SECTION]
+        {feedback_section}
         
         Based on the history (don't repeat yourself) and the new message, respond.
         """
