@@ -10,9 +10,9 @@ class UserAgent:
         
         reflections = self.profile.get("reflections", {})
         style = self.profile.get("dialogue_style", {})
-        memories = self.profile.get("key_memories", [])
+        related_users = self.profile.get("related_users", [])
         
-        self.memory_tool = MemoryRetriever(memories)
+        self.memory_tool = MemoryRetriever(self.user_id, related_users)
 
         system_message=f"""
         You are a movie enthusiast chatting with an AI.
@@ -34,7 +34,8 @@ class UserAgent:
         - **FOCUS:** Focus on ONE thing you like or hate at a time.
         
         **TOOL USAGE:**
-        - You CAN use `lookup_memory` if you really need to recall a specific movie.
+        - You CAN use `lookup_memory` if you really need to recall a specific movie (may include similar users' memories).
+        - You response should be based on lookup_memory results (may include similar users' memories).
         
         **FINISH:**
         - ALWAYS end with **"TERMINATE"**.

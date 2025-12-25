@@ -1,8 +1,9 @@
 import json
 import os
-from typing import List, Optional
+from typing import List, Optional, Dict
 from pydantic import BaseModel, Field
 from openai import OpenAI
+from tqdm import tqdm
 
 
 class KeyMemoryItem(BaseModel):
@@ -32,12 +33,38 @@ class FullUserProfile(BaseModel):
     key_memories: List[KeyMemoryItem]
     reflections: ReflectionProfile
     dialogue_style: StyleProfile
+    related_users: List[str] = Field(default_factory=list, description="Top related user IDs for memory expansion.")
+
+
+def load_neighbor_map(neighbor_file: Optional[str]) -> Dict[str, List[str]]:
+    """
+    Load neighbor user IDs from jsonl produced by build_social_graph.py.
+    Each line: {"user_id": "...", "neighbors": [{"user_id": "...", ...}, ...]}
+    """
+    if not neighbor_file or not os.path.exists(neighbor_file):
+        return {}
+    mapping: Dict[str, List[str]] = {}
+    with open(neighbor_file, "r", encoding="utf-8") as f:
+        for line in f:
+            if not line.strip():
+                continue
+            try:
+                obj = json.loads(line.strip())
+            except json.JSONDecodeError:
+                continue
+            uid = obj.get("user_id")
+            neighbors = obj.get("neighbors", [])
+            if not uid:
+                continue
+            mapping[uid] = [n.get("user_id") for n in neighbors if n.get("user_id")]
+    return mapping
 
 
 class MemoryProfileChain:
-    def __init__(self, api_key, base_url, model_name="deepseek-chat"):
+    def __init__(self, api_key, base_url, model_name="deepseek-chat", neighbor_file: Optional[str] = None, neighbor_map: Optional[Dict[str, List[str]]] = None):
         self.client = OpenAI(api_key=api_key, base_url=base_url)
         self.model_name = model_name
+        self.neighbor_map = neighbor_map or load_neighbor_map(neighbor_file)
 
     def _time_aware_sample(self, interaction_history):
         """
@@ -185,6 +212,8 @@ class MemoryProfileChain:
             reflections = self._step_2_reflections(context, memories, date_range)
             style = self._step_3_style(context)
             
+            related_users = self.neighbor_map.get(user_id, [])
+
             return FullUserProfile(
                 user_id=user_id,
                 meta_stats={
@@ -194,7 +223,8 @@ class MemoryProfileChain:
                 },
                 key_memories=memories,
                 reflections=reflections,
-                dialogue_style=style
+                dialogue_style=style,
+                related_users=related_users
             ).model_dump()
             
         except Exception as e:
@@ -203,22 +233,35 @@ class MemoryProfileChain:
 
 if __name__ == "__main__":
     
-    INPUT_FILE = "../output/sample_user_history_matched.json" 
+    INPUT_FILE = "../output/user_history_matched.jsonl" 
     OUTPUT_FILE = "../output/sample_profile.json"
+    NEIGHBOR_FILE = "/data/wdk/datasets/output/user_neighbors.jsonl"
 
-    N = 0  #0代表第1个用户
+    TARGET_USER_IDS = [
+        "A3PECZX773ME74",
+        "A3SYMLB8JSW5VD",
+        "A1KFBAPAKMEQUF",
+        "A16C4WEP3NSNWL",
+        "A16N5JS79WO5DD",
+        "AC3STF8DSRUPE"
+    ]
 
     with open(INPUT_FILE, 'r', encoding='utf-8') as f:
-        all_users = json.load(f)
-        target_user = all_users[N]
+        all_users = [json.loads(line.strip()) for line in f]
+        selected_users = [u for u in all_users if u.get('user_id') in TARGET_USER_IDS]
     
     profiler = MemoryProfileChain(api_key="sk-fd424ac8b68d4e3fbe0dc9988ff4cc65",
                                 base_url="https://api.deepseek.com",
-                                model_name="deepseek-chat")
+                                model_name="deepseek-chat",
+                                neighbor_file=NEIGHBOR_FILE)
     
-    result = profiler.process_user(target_user)
+    results = []
+    for user in tqdm(selected_users, desc="处理用户"):
+        r = profiler.process_user(user)
+        if r:
+            results.append(r)
     
-    if result:
+    if results:
         with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
-            json.dump(result, f, ensure_ascii=False, indent=2)
-        print(f"已保存为 {OUTPUT_FILE}")
+            json.dump(results, f, ensure_ascii=False, indent=2)
+        print(f"已保存 {len(results)} 个用户到 {OUTPUT_FILE}")

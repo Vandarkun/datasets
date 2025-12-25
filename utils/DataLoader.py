@@ -8,7 +8,7 @@ class UserHistoryLoader:
     def __init__(self, 
                  reviews_path, 
                  local_meta_path, 
-                 min_reviews=5):
+                 min_reviews=8):
         """
         :param reviews_path: 原始 Amazon 评论文件 
         :param local_meta_path: 预处理好的元数据文件 
@@ -161,15 +161,15 @@ class UserHistoryLoader:
             json.dump(result, out_f, ensure_ascii=False, indent=2)
 
 if __name__ == "__main__":
-    REVIEWS_FILE = "../data/Movies_and_TV.json" 
-    LOCAL_META_FILE = "../data/tmdb_movie_metadata.jsonl" 
+    REVIEWS_FILE = "/data/wdk/Datasets/amazon_review_movie/Movies_and_TV.json" 
+    LOCAL_META_FILE = "/data/wdk/datasets/data/tmdb_movie_metadata.jsonl" 
     OUTPUT_FILE = "../output/user_history_matched.jsonl"
 
     if os.path.exists(REVIEWS_FILE) and os.path.exists(LOCAL_META_FILE):
         loader = UserHistoryLoader(
             reviews_path=REVIEWS_FILE,
             local_meta_path=LOCAL_META_FILE,
-            min_reviews=5 
+            min_reviews=8 
         )
         
         loader.load_local_metadata()       
@@ -178,5 +178,3 @@ if __name__ == "__main__":
         loader.read_first_n_jsonl_lines(OUTPUT_FILE, "../output/sample_user_history_matched.json", 5)
     else:
         print("Error: Input files not found.")
-
-    

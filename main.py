@@ -25,7 +25,7 @@ if __name__ == "__main__":
     original_stdout = sys.stdout
     sys.stdout = DualLogger(log_path)
 
-    profile_src = "output/sample_profile.json"
+    profile_src = "output/run.json"
     output_dst = "output/sample_dialogue.json"
     controller = DialogueController(
         profile_path=profile_src,

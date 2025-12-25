@@ -1,7 +1,8 @@
 import faiss
 import pickle
 import os
-from sentence_transformers import SentenceTransformer, util
+import numpy as np
+from sentence_transformers import SentenceTransformer
 import config
 
 _SHARED_MODEL = None
@@ -9,14 +10,14 @@ _SHARED_MODEL = None
 def get_shared_model():
     global _SHARED_MODEL
     if _SHARED_MODEL is None:
-        print(f"[Init] Loading Shared Embedding Model: {config.HF_MODEL_LOCAL_PATH}...")
+        print(f"[Init] Loading Embedding Model: {config.HF_MODEL_LOCAL_PATH}...")
         _SHARED_MODEL = SentenceTransformer(config.HF_MODEL_LOCAL_PATH, device=config.EMBEDDING_DEVICE)
     return _SHARED_MODEL
+
 
 # --- System 端工具: 电影检索 ---
 class MovieRetriever:
     def __init__(self):
-        print(f"Loading Embedding Model: {config.HF_MODEL_LOCAL_PATH}...")
         self.model = get_shared_model()
         
         print(f"Loading FAISS Index: {config.FAISS_INDEX_PATH}...")
@@ -71,57 +72,117 @@ class MovieRetriever:
 
 # --- User 端工具: 记忆检索 (Class Refactored) ---
 class MemoryRetriever:
-    def __init__(self, memories: list):
-        """
-        初始化时直接将所有记忆向量化并缓存。
-        """
+    """
+    离线记忆检索：基于预构建的 FAISS 索引。
+    - 分别返回本用户与相似用户的命中，避免混淆。
+    """
+
+    def __init__(self, user_id: str, related_users: list[str]):
         self.model = get_shared_model()
-        self.memories = memories
-        self.memory_embeddings = None
         
-        if self.memories:
-            self.corpus = [
-                f"{m.get('movie_title', '')}: {m.get('memory_text', '')}" 
-                for m in memories
-            ]
-            print(f"[Init] Encoding {len(self.memories)} User Memories...")
-            self.memory_embeddings = self.model.encode(self.corpus, convert_to_tensor=True, normalize_embeddings=True)
+        self.user_id = user_id
+        self.related_users = related_users or []
+        self.index = None
+        self.metadata = None
+        self.user_index_map = {}
+        self.threshold = 0.25
+        self.top_k = 3
+        self._load_index()
+
+    def _load_index(self):
+        idx_path = config.MEMORY_FAISS_INDEX_PATH
+        meta_path = config.MEMORY_FAISS_META_PATH
+        if not (os.path.exists(idx_path) and os.path.exists(meta_path)):
+            print(f"[MemoryRetriever] Memory index or meta not found: {idx_path}, {meta_path}")
+            return
+        try:
+            print(f"Loading FAISS Index: {idx_path}...")
+            self.index = faiss.read_index(idx_path)
+            with open(meta_path, "rb") as f:
+                print(f"Loading Metadata: {meta_path}...")
+                self.metadata = pickle.load(f)
+            # 为快速按 user 过滤，建立 user_id -> index 列表
+            mapping = {}
+            for i, meta in enumerate(self.metadata):
+                uid = meta.get("user_id")
+                if not uid:
+                    continue
+                mapping.setdefault(uid, []).append(i)
+            self.user_index_map = mapping
+            print(f"[MemoryRetriever] Loaded memory index with {self.index.ntotal} entries.")
+        except Exception as e:
+            print(f"[MemoryRetriever] Failed to load memory index: {e}")
+            self.index = None
+            self.metadata = None
+            self.user_index_map = {}
+
+    def _search_in_users(self, query_vec: np.ndarray, users: set[str]):
+        if not self.index or not self.metadata or not users:
+            return []
+        # 收集这些用户的条目索引
+        idxs = []
+        for uid in users:
+            idxs.extend(self.user_index_map.get(uid, []))
+        if not idxs:
+            return []
+        # 重建向量并计算余弦（向量已归一化，安全起见再标准化一次）
+        embeds = []
+        metas = []
+        for idx in idxs:
+            try:
+                vec = self.index.reconstruct(idx)
+            except Exception:
+                continue
+            norm = np.linalg.norm(vec)
+            if norm > 0:
+                vec = vec / norm
+            embeds.append(vec)
+            metas.append(self.metadata[idx])
+        if not embeds:
+            return []
+        mat = np.vstack(embeds)
+        scores = mat @ query_vec.T  # (n,1)
+        scores = scores.reshape(-1)
+
+        pairs = []
+        for score, meta in zip(scores, metas):
+            if score < self.threshold:
+                continue
+            pairs.append((float(score), meta))
+        pairs.sort(key=lambda x: x[0], reverse=True)
+        return pairs[: self.top_k]
 
     def lookup(self, query: str) -> str:
         """
-        Semantic search in user memories.
+        Semantic search in prebuilt memory index.
+        Returns sections for self and related users separately.
         """
-        if not self.memories or self.memory_embeddings is None:
-            return "My memory is blank (no history data)."
-
+        if not self.index or not self.metadata:
+            return "Memory index not available. Please build user memory FAISS first."
         try:
-            # 向量化查询
-            query_embedding = self.model.encode(query, convert_to_tensor=True, normalize_embeddings=True)
-            
-            # 计算相似度
-            cos_scores = util.cos_sim(query_embedding, self.memory_embeddings)[0]
-            
-            # 获取 Top 3
-            top_results = list(zip(cos_scores, self.memories))
-            top_results.sort(key=lambda x: x[0], reverse=True)
-            
-            hits = []
-            # 阈值过滤
-            threshold = 0.25
-            
-            for score, mem in top_results[:3]:
-                if score < threshold:
-                    continue
-                hits.append(
-                    f"[Similarity: {score:.2f}] Film: {mem.get('movie_title')} | "
-                    f"Rating: {mem.get('rating')} | "
-                    f"Review: {mem.get('memory_text')}"
-                )
-            
-            if not hits:
-                return "I racked my brain, but I can't recall any specific movie related to that topic."
-            
-            return "\n".join(hits)
+            query_vec = self.model.encode([query], convert_to_numpy=True, normalize_embeddings=True)
+            if query_vec.dtype != np.float32:
+                query_vec = query_vec.astype("float32")
+
+            self_hits = self._search_in_users(query_vec, {self.user_id})
+            rel_hits = self._search_in_users(query_vec, set(self.related_users))
+
+            def fmt(hits, label):
+                if not hits:
+                    return f"{label}: no relevant memories."
+                lines = []
+                for score, mem in hits:
+                    lines.append(
+                        f"[{label} | Sim {score:.2f}] User: {mem.get('user_id')} | "
+                        f"Film: {mem.get('movie_title')} | Rating: {mem.get('rating')} | "
+                        f"Memory: {mem.get('memory_text')}"
+                    )
+                return "\n".join(lines)
+
+            sections = []
+            sections.append(fmt(self_hits, "Your Memory"))
+            sections.append(fmt(rel_hits, "Similar User Memory"))
+            return "\n".join(sections)
 
         except Exception as e:
             return f"Memory Lookup Error: {e}"

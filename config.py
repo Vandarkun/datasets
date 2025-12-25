@@ -19,7 +19,10 @@ LLM_CONFIG = {
 MAX_REJECTIONS = 2
 MAX_TOTAL_TURNS = 7
 
-FAISS_INDEX_PATH = r"D:\Desktop\My\code\datasets\data\faiss\movies.faiss"
-FAISS_META_PATH = r"D:\Desktop\My\code\datasets\data\faiss\movies.pkl"
-HF_MODEL_LOCAL_PATH = r"D:\Desktop\My\code\datasets\model\all-MiniLM-L6-v2"
+FAISS_INDEX_PATH = r"/data/wdk/datasets/data/faiss/movies.faiss"
+FAISS_META_PATH = r"/data/wdk/datasets/data/faiss/movies.pkl"
+HF_MODEL_LOCAL_PATH = r"/data/wdk/datasets/model/all-MiniLM-L6-v2"
 EMBEDDING_DEVICE = "cpu"
+MEMORY_FAISS_INDEX_PATH = r"/data/wdk/datasets/data/faiss/user_memories.faiss"
+MEMORY_FAISS_META_PATH = r"/data/wdk/datasets/data/faiss/user_memories.pkl"
+MEMORY_PROFILE_PATH = r"/data/wdk/datasets/output/sample_profile.json"
