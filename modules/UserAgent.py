@@ -10,9 +10,16 @@ class UserAgent:
         
         reflections = self.profile.get("reflections", {})
         style = self.profile.get("dialogue_style", {})
-        related_users = self.profile.get("related_users", [])
+        enable_related_memory = bool(getattr(config, "ENABLE_RELATED_USER_MEMORY", True))
+        related_users = self.profile.get("related_users", []) if enable_related_memory else []
         
-        self.memory_tool = MemoryRetriever(self.user_id, related_users)
+        self.memory_tool = MemoryRetriever(self.user_id, related_users, enable_related_memory)
+
+        memory_scope = (
+            "Similar-user expansion is OFF; rely only on your own memories."
+            if not enable_related_memory
+            else "You may also draw from similar users' memories when they exist."
+        )
 
         system_message=f"""
         You are a movie enthusiast chatting with an AI.
@@ -34,8 +41,9 @@ class UserAgent:
         - **FOCUS:** Focus on ONE thing you like or hate at a time.
         
         **TOOL USAGE:**
-        - You CAN use `lookup_memory` if you really need to recall a specific movie (may include similar users' memories).
-        - You response should be based on lookup_memory results (may include similar users' memories).
+        - You CAN use `lookup_memory` if you really need to recall a specific movie.
+        - Memory policy: {memory_scope}
+        - Your response should be based on lookup_memory results.
         
         **FINISH:**
         - ALWAYS end with **"TERMINATE"**.
@@ -61,12 +69,19 @@ class UserAgent:
         def lookup_memory_wrapper(query: str) -> str:
             return self.memory_tool.lookup(query)
 
+        memory_tool_desc = "Search your movie history for evidence."
+        if enable_related_memory:
+            memory_tool_desc += " May include similar users' memories."
+        else:
+            memory_tool_desc += " Similar-user lookup is disabled."
+        memory_tool_desc += " MANDATORY usage."
+
         autogen.register_function(
             lookup_memory_wrapper,  
             caller=self.assistant,
             executor=self.executor,
             name="lookup_memory",
-            description="Search your movie history for evidence. MANDATORY usage."
+            description=memory_tool_desc
         )
 
     def reply(self, system_msg: str, chat_history: list, rejection_count: int, review_feedback: str = "") -> str:

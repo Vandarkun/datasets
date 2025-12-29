@@ -26,3 +26,4 @@ EMBEDDING_DEVICE = "cpu"
 MEMORY_FAISS_INDEX_PATH = r"/data/wdk/datasets/data/faiss/user_memories.faiss"
 MEMORY_FAISS_META_PATH = r"/data/wdk/datasets/data/faiss/user_memories.pkl"
 MEMORY_PROFILE_PATH = r"/data/wdk/datasets/output/sample_profile.json"
+ENABLE_RELATED_USER_MEMORY = False  

@@ -77,11 +77,12 @@ class MemoryRetriever:
     - 分别返回本用户与相似用户的命中，避免混淆。
     """
 
-    def __init__(self, user_id: str, related_users: list[str]):
+    def __init__(self, user_id: str, related_users: list[str], enable_related_memory: bool = True):
         self.model = get_shared_model()
         
         self.user_id = user_id
-        self.related_users = related_users or []
+        self.enable_related_memory = enable_related_memory
+        self.related_users = related_users if self.enable_related_memory else []
         self.index = None
         self.metadata = None
         self.user_index_map = {}
@@ -165,9 +166,14 @@ class MemoryRetriever:
                 query_vec = query_vec.astype("float32")
 
             self_hits = self._search_in_users(query_vec, {self.user_id})
-            rel_hits = self._search_in_users(query_vec, set(self.related_users))
+            rel_hits = []
+            if self.enable_related_memory and self.related_users:
+                rel_hits = self._search_in_users(query_vec, set(self.related_users))
+            similar_disabled = not self.enable_related_memory
 
-            def fmt(hits, label):
+            def fmt(hits, label, disabled=False):
+                if disabled:
+                    return f"{label}: disabled by config."
                 if not hits:
                     return f"{label}: no relevant memories."
                 lines = []
@@ -181,7 +187,7 @@ class MemoryRetriever:
 
             sections = []
             sections.append(fmt(self_hits, "Your Memory"))
-            sections.append(fmt(rel_hits, "Similar User Memory"))
+            sections.append(fmt(rel_hits, "Similar User Memory", disabled=similar_disabled))
             return "\n".join(sections)
 
         except Exception as e:

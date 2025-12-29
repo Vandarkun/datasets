@@ -1,5 +1,6 @@
 import json
 import os
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from typing import List, Optional, Dict
 from pydantic import BaseModel, Field
 from openai import OpenAI
@@ -160,14 +161,14 @@ class MemoryProfileChain:
 
     # Step 1: 提取记忆
     def _step_1_memories(self, context_text):
-        print("    > Step 1: Extracting Memories...")
+        # print("    > Step 1: Extracting Memories...")
         prompt = "Analyze reviews. Extract concise key memories. Focus on WHY they liked/disliked specific movies."
         result = self._call_llm(prompt, context_text, KeyMemoryList)
         return result.memories if result else []
 
     # Step 2: 深度反思 (含演变分析)
     def _step_2_reflections(self, context_text, memories, date_range_str):
-        print("    > Step 2: Synthesizing Reflections & Evolution...")
+        # print("    > Step 2: Synthesizing Reflections & Evolution...")
         memory_summary = "\n".join([f"- {m.movie_title}: {m.memory_text}" for m in memories])
         
         # Prompt 引导分析时间演变
@@ -186,7 +187,7 @@ class MemoryProfileChain:
 
     # Step 3: 风格分析
     def _step_3_style(self, context_text):
-        print("    > Step 3: Analyzing Style...")
+        # print("    > Step 3: Analyzing Style...")
         prompt = "Analyze the writing style (tone, verbosity, keywords) to help a chatbot mimic this user."
         return self._call_llm(prompt, context_text, StyleProfile)
 
@@ -234,32 +235,31 @@ class MemoryProfileChain:
 if __name__ == "__main__":
     
     INPUT_FILE = "../output/user_history_matched.jsonl" 
-    OUTPUT_FILE = "../output/sample_profile.json"
+    OUTPUT_FILE = "../output/sample_profile_100.json"
     NEIGHBOR_FILE = "/data/wdk/datasets/output/user_neighbors.jsonl"
-
-    TARGET_USER_IDS = [
-        "A3PECZX773ME74",
-        "A3SYMLB8JSW5VD",
-        "A1KFBAPAKMEQUF",
-        "A16C4WEP3NSNWL",
-        "A16N5JS79WO5DD",
-        "AC3STF8DSRUPE"
-    ]
+    N = 100  # 0 表示处理所有用户, 否则仅处理前 N 个用户
+    MAX_WORKERS = 8  # 并行线程数
 
     with open(INPUT_FILE, 'r', encoding='utf-8') as f:
-        all_users = [json.loads(line.strip()) for line in f]
-        selected_users = [u for u in all_users if u.get('user_id') in TARGET_USER_IDS]
+        all_users = [json.loads(line.strip()) for line in f if line.strip()]
+        selected_users = all_users if N <= 0 else all_users[:N]
+        print(f"Loaded {len(all_users)} users, processing {len(selected_users)} (N={N}).")
     
     profiler = MemoryProfileChain(api_key="sk-fd424ac8b68d4e3fbe0dc9988ff4cc65",
                                 base_url="https://api.deepseek.com",
                                 model_name="deepseek-chat",
                                 neighbor_file=NEIGHBOR_FILE)
     
-    results = []
-    for user in tqdm(selected_users, desc="处理用户"):
-        r = profiler.process_user(user)
-        if r:
-            results.append(r)
+    indexed_results = []
+    with ThreadPoolExecutor(max_workers=MAX_WORKERS) as executor:
+        futures = {executor.submit(profiler.process_user, user): idx for idx, user in enumerate(selected_users)}
+        for fut in tqdm(as_completed(futures), total=len(futures), desc="处理用户"):
+            r = fut.result()
+            if r:
+                indexed_results.append((futures[fut], r))
+
+    indexed_results.sort(key=lambda x: x[0])
+    results = [r for _, r in indexed_results]
     
     if results:
         with open(OUTPUT_FILE, 'w', encoding='utf-8') as f:
