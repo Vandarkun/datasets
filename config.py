@@ -26,4 +26,8 @@ EMBEDDING_DEVICE = "cpu"
 MEMORY_FAISS_INDEX_PATH = r"/data/wdk/datasets/data/faiss/user_memories.faiss"
 MEMORY_FAISS_META_PATH = r"/data/wdk/datasets/data/faiss/user_memories.pkl"
 MEMORY_PROFILE_PATH = r"/data/wdk/datasets/output/sample_profile.json"
-ENABLE_RELATED_USER_MEMORY = False  
+
+ENABLE_RELATED_USER_MEMORY = False
+ENABLE_FILE_LOG = False
+ENABLE_PER_USER_RESULT = False
+DIALOGUE_MAX_WORKERS = 16  # 多用户对话生成的并行进程数

@@ -78,9 +78,10 @@ class SystemAgent:
             description="Search the movie library. Returns the best matching movie details."
         )
 
-    def reply(self, last_user_input: str, chat_history: list = None) -> str:
+    def reply(self, last_user_input: str, chat_history: list = None, review_feedback: str = None) -> str:
         """
         发起一次内部对话，获取 System 的回复。
+        review_feedback: 审核反馈信息，如果提供则需要在回复中考虑
         """
         # 将上一轮输入作为 prompt。没有保存完整对话历史        
         # 限制 max_turns（思考turns）
@@ -96,6 +97,7 @@ class SystemAgent:
                 role = "User" if msg['role'] == "user" else "You (System)"
                 history_str += f"{role}: {msg['content']}\n"
 
+        # 构建基础prompt
         context_prompt = f"""
         [CONVERSATION HISTORY]
         {history_str}
@@ -106,6 +108,26 @@ class SystemAgent:
         Based on the history and the new input, respond to the user.
         """
         
+        # 如果有审核反馈，添加反馈信息
+        if review_feedback:
+            feedback_section = f"""
+            
+            ===================================================
+            [REVIEW FEEDBACK - MUST ADDRESS]
+            Your previous response did not meet the requirements. Please revise your response.
+            Issue: {review_feedback}
+
+            **REMEMBER THE CRITICAL RULES:**
+            - Recommend EXACTLY ONE movie only
+            - Keep response UNDER 50 WORDS
+            - NO numbered lists (1. 2. 3.) or bullet points
+            - Do NOT start with single-word exclamations like "Perfect!", "Great!", "Awesome!"
+            - Start with movie title, a verb, or a question
+            - Be a casual movie buff friend, not a search engine
+            ===================================================
+            """
+            context_prompt = context_prompt + feedback_section
+
         self.executor.initiate_chat(
             self.assistant,
             message=context_prompt,

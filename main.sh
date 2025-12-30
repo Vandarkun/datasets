@@ -1,3 +1,3 @@
 #!/bin/bash
 
-CUDA_VISIBLE_DEVICES=3 python main.py
+CUDA_VISIBLE_DEVICES=6 python main.py
